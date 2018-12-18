@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:mqtt_client/mqtt_client.dart';
 import 'sensors.dart';
 
 void main() {
@@ -35,6 +37,64 @@ class _MyHomePageState extends State<MyHomePage> {
   List<double> _rotationValues;
   List<StreamSubscription<dynamic>> _streamSubscriptions =
       <StreamSubscription<dynamic>>[];
+  int i = 0;
+
+  Future<int> pub(String topic, String message) async {
+    print("-------------------------$i--------------------------");
+    i++;
+
+    final MqttClient client = MqttClient('111.230.31.218', '');
+
+    client.logging(on: false);
+    client.onDisconnected = onDisconnected;
+    client.onConnected = onConnected;
+    client.onSubscribed = onSubscribed;
+
+    final MqttConnectMessage connMess = MqttConnectMessage()
+        .withClientIdentifier(message)
+        .startClean();
+    print('EXAMPLE::Mosquitto client connecting....');
+    client.connectionMessage = connMess;
+
+    try {
+      await client.connect();
+    } on Exception catch (e) {
+      print('EXAMPLE::client exception - $e');
+      client.disconnect();
+    }
+
+    print('EXAMPLE::Publishing our topic');
+
+    String pubTopic = topic;
+    final MqttClientPayloadBuilder builder = MqttClientPayloadBuilder();
+
+    builder.addString(message);
+    client.publishMessage(pubTopic, MqttQos.exactlyOnce, builder.payload);
+
+    print('EXAMPLE::Sleeping....');
+    print('EXAMPLE::Disconnecting');
+
+    await MqttUtilities.asyncSleep(10);
+
+    return 0;
+  }
+
+  /// The subscribed callback
+  void onSubscribed(String topic) {
+    print('EXAMPLE::Subscription confirmed for topic $topic');
+  }
+
+  /// The unsolicited disconnect callback
+  void onDisconnected() {
+    print('EXAMPLE::OnDisconnected client callback - Client disconnection');
+
+  }
+
+  /// The successful connect callback
+  void onConnected() {
+    print(
+        'EXAMPLE::OnConnected client callback - Client connection was sucessful');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +115,7 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Column(
 //        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: <Widget>[
+          _buildInfoCard(context, accelerometer.toString()),
           Card(
             child: FlatButton(
               child: ListTile(
@@ -123,14 +184,18 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Card _buildInfoCard(BuildContext context) {
+  Card _buildInfoCard(BuildContext context, String acc) {
     return Card(
       child: FlatButton(
         child: ListTile(
           title: Text("Nick name"),
           subtitle: Text('Topic name'),
         ),
-        onPressed: () {},
+        onPressed: () {
+          setState(() {
+//            pub("test", acc);
+          });
+        },
       ),
     );
   }
@@ -146,25 +211,31 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
+    String result = "";
     _streamSubscriptions
         .add(accelerometerEvents.listen((AccelerometerEvent event) {
       setState(() {
         _accelerometerValues = <double>[event.x, event.y, event.z];
+        result = result + _accelerometerValues.toString();
+        pub("test", "accelerometer:" + _accelerometerValues.toString());
       });
     }));
     _streamSubscriptions.add(gyroscopeEvents.listen((GyroscopeEvent event) {
       setState(() {
         _gyroscopeValues = <double>[event.x, event.y, event.z];
+        pub("test", "gyroscope:" + _gyroscopeValues.toString());
       });
     }));
     _streamSubscriptions.add(gravityEvents.listen((GravityEvent event) {
       setState(() {
         _gravityValues = <double>[event.x, event.y, event.z];
+        pub("test", "gravity:" + _accelerometerValues.toString());
       });
     }));
     _streamSubscriptions.add(rotationEvents.listen((RotationEvent event) {
       setState(() {
         _rotationValues = <double>[event.x, event.y, event.z];
+        pub("test", "rotation:" + _accelerometerValues.toString());
       });
     }));
   }
