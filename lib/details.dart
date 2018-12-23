@@ -1,106 +1,164 @@
 import 'dart:async';
-
+import 'package:mqtt_client/mqtt_client.dart';
 import 'package:flutter/material.dart';
-import 'sensors.dart';
 
-class Details extends StatefulWidget {
-  const Details({
-    Key key,
-    this.accelerometer,
-    this.gyroscope,
-    this.gravity,
-    this.rotation,
-    this.topic,
-  }) : super(key: key);
-  final String accelerometer;
-  final String gyroscope;
-  final String gravity;
-  final String rotation;
+class DetailsPage extends StatefulWidget {
+  const DetailsPage({Key key, this.topic, this.nickname}) : super(key: key);
+
   final String topic;
+  final String nickname;
 
   @override
   _DetailsState createState() => _DetailsState();
 }
 
-class _DetailsState extends State<Details> {
-  List<double> _accelerometerValues;
-  List<double> _gyroscopeValues;
-  List<double> _gravityValues;
-  List<double> _rotationValues;
-  List<StreamSubscription<dynamic>> _streamSubscriptions =
-      <StreamSubscription<dynamic>>[];
+class _DetailsState extends State<DetailsPage> {
+  String _accelerometerValues = "[0.0,0.0,0.0]";
+  String _gyroscopeValues = "[0.0,0.0,0.0]";
+  String _gravityValues = "[0.0,0.0,0.0]";
+  String _rotationValues = "[0.0,0.0,0.0]";
+  MqttClient subclient;
 
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
-    _streamSubscriptions
-        .add(accelerometerEvents.listen((AccelerometerEvent event) {
-      setState(() {
-        _accelerometerValues = <double>[event.x, event.y, event.z];
+
+    subclient = MqttClient('111.230.31.218', '');
+    sub(subclient, widget.topic);
+  }
+
+  void dispose() {
+    super.dispose();
+    subclient.unsubscribe(widget.topic);
+    subclient.disconnect();
+  }
+
+  Future<int> sub(MqttClient client, String topic) async {
+    client.logging(on: false);
+    client.keepAlivePeriod = 2;
+
+    final MqttConnectMessage connMess = MqttConnectMessage()
+        .withClientIdentifier("sub" + topic.toString())
+        .keepAliveFor(2)
+        .startClean();
+
+    client.connectionMessage = connMess;
+
+    try {
+      await client.connect();
+    } on Exception catch (e) {
+      client.disconnect();
+    }
+
+    if (client.connectionStatus.state == MqttConnectionState.connected) {
+      String topic = widget.topic; // Not a wildcard topic
+      client.subscribe(topic, MqttQos.atMostOnce);
+      client.updates.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+        final MqttPublishMessage recMess = c[0].payload;
+        final String pt =
+            MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+
+        String sensor = pt.split(":")[0];
+        List<String> data = pt.split(":")[1].split(",");
+
+        String x = double.parse(data[0].split("[")[1]).toStringAsFixed(4);
+        String y = double.parse(data[1]).toStringAsFixed(4);
+        String z = double.parse(data[2].split("]")[0]).toStringAsFixed(4);
+
+        setState(() {
+          switch (sensor) {
+            case "accelerometer":
+              _accelerometerValues = "x: " + x + " y: " + y + " z: " + z;
+              break;
+            case "gyroscope":
+              _gyroscopeValues = "x: " + x + " y: " + y + " z: " + z;
+              break;
+            case "rotation":
+              _rotationValues = "x: " + x + " y: " + y + " z: " + z;
+              break;
+            case "gravity":
+              _gravityValues = "x: " + x + " y: " + y + " z: " + z;
+              break;
+          }
+        });
+
+        print('');
       });
-    }));
-    _streamSubscriptions.add(gyroscopeEvents.listen((GyroscopeEvent event) {
-      setState(() {
-        _gyroscopeValues = <double>[event.x, event.y, event.z];
-      });
-    }));
-    _streamSubscriptions.add(gravityEvents.listen((GravityEvent event) {
-      setState(() {
-        _gravityValues = <double>[event.x, event.y, event.z];
-      });
-    }));
-    _streamSubscriptions.add(rotationEvents.listen((RotationEvent event) {
-      setState(() {
-        _rotationValues = <double>[event.x, event.y, event.z];
-      });
-    }));
+    } else {
+      client.disconnect();
+    }
+
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<String> accelerometer =
-        _accelerometerValues?.map((double v) => v.toStringAsFixed(1))?.toList();
-    final List<String> gyroscope =
-        _gyroscopeValues?.map((double v) => v.toStringAsFixed(1))?.toList();
-
-    final List<String> gravity =
-        _gravityValues?.map((double v) => v.toStringAsFixed(1))?.toList();
-    final List<String> rotation =
-        _rotationValues?.map((double v) => v.toStringAsFixed(1))?.toList();
-
     return Scaffold(
       appBar: buildAppbar(context),
-      body: Column(
-        children: <Widget>[
-          buildInfoCard(context, "Topic Name", widget.topic),
-          buildInfoCard(context, "Accelerometer", widget.accelerometer),
-          buildInfoCard(context, "Gyroscope", widget.gyroscope),
-          buildInfoCard(context, "Gravity", widget.gravity),
-          buildInfoCard(context, "Rotation", widget.rotation),
-        ],
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8.0,left: 15.0,right: 15.0),
+          child: Column(
+            children: <Widget>[
+              buildInfoCard(context, "Topic Name", widget.topic),
+              buildInfoCard(context, "Accelerometer", _accelerometerValues),
+              buildInfoCard(context, "Gyroscope", _gyroscopeValues),
+              buildInfoCard(context, "Gravity", _gravityValues),
+              buildInfoCard(context, "Rotation", _rotationValues),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   AppBar buildAppbar(BuildContext context) {
     return AppBar(
-      title: Text("Nick Name"),
+      title: Text(
+        widget.nickname,
+        style: TextStyle(fontSize: 25.0, fontWeight: FontWeight.w500),
+      ),
     );
   }
 
-  Card buildInfoCard(BuildContext context, String title, String text) {
-    return Card(
-      child: Column(
-        children: <Widget>[
-          Container(
-            child: Text(title),
-          ),
-          Divider(),
-          Center(
-            child: Text(text),
-          )
-        ],
+  Padding buildInfoCard(BuildContext context, String title, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Card(
+        elevation: 5.0,
+        child: Column(
+          children: <Widget>[
+            Container(
+              child: Center(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
+                ),
+              ),
+              color: Colors.blue,
+              constraints: BoxConstraints.expand(
+                height:
+                    Theme.of(context).textTheme.display1.fontSize * 1.1 + 10,
+              ),
+            ),
+            Container(
+              child: Center(
+                child: Text(
+                  text,
+                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.w400),
+                ),
+              ),
+              constraints: BoxConstraints.expand(
+                height:
+                    Theme.of(context).textTheme.display1.fontSize * 1.1 + 10,
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
