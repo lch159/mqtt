@@ -102,7 +102,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<int> pub(String topic, String message) async {
-    final MqttClient client = MqttClient('111.230.31.218', '');
+    //mqtt broker 地址
+    String mqttBroker ="";
+    final MqttClient client = MqttClient(mqttBroker, '');
+
 
     client.logging(on: false);
     client.keepAlivePeriod = 2;

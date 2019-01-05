@@ -24,7 +24,9 @@ class _DetailsState extends State<DetailsPage> {
     // TODO: implement initState
     super.initState();
 
-    subclient = MqttClient('111.230.31.218', '');
+    //mqtt broker 地址
+    String mqttBroker ="";
+    subclient = MqttClient(mqttBroker, '');
     sub(subclient, widget.topic);
   }
 
